@@ -13,6 +13,7 @@ import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.os.ParcelUuid;
 import android.util.Log;
 
 public class BluetoothTestService {
@@ -29,6 +30,7 @@ public class BluetoothTestService {
         UUID.fromString("fa87c0d0-afac-11de-8a39-0800200c9a66");
     private static final UUID MY_UUID_INSECURE =
         UUID.fromString("8ce255c0-200a-11e0-ac64-0800200c9a66");
+    private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
     
  // Member fields
     private final BluetoothAdapter mAdapter;
@@ -353,26 +355,57 @@ public class BluetoothTestService {
 
             // Get a BluetoothSocket for a connection with the
             // given BluetoothDevice
-            try {
-                if (secure) {
-                    //tmp = device.createRfcommSocketToServiceRecord(MY_UUID_SECURE);
-                	//UUID uuid = device.getUuids()[0].getUuid();
-                	//tmp = device.createRfcommSocketToServiceRecord(uuid);
-                	//BluetoothDevice mmDevice;
-                	boolean temp = mmDevice.fetchUuidsWithSdp();
-                	UUID uuid = null;
-                	if( temp ){
-                	uuid = mmDevice.getUuids()[0].getUuid();
-                	}
-                	tmp = device.createRfcommSocketToServiceRecord(uuid);
-                } else {
-                    //tmp = device.createInsecureRfcommSocketToServiceRecord(MY_UUID_INSECURE);
-                	//UUID uuid = device.getUuids()[0].getUuid();
-                	//tmp = device.createInsecureRfcommSocketToServiceRecord(uuid);
-                }
-            } catch (IOException e) {
+            /*try {
+            	boolean temp = mmDevice.fetchUuidsWithSdp();
+            	UUID uuid = null;
+            	if( temp ){
+            		//3 or 4 different UUIDs are usually returned by getUuids()
+            		for (int i=0; i<mmDevice.getUuids().length; i++) {
+            			uuid = mmDevice.getUuids()[i].getUuid();
+            			Log.w(TAG, "uuid is "+uuid);
+            		}
+            	}
+            	//Method #2 - Used in BluetoothChat example but "Service discovery failed" all the freaking times
+            	tmp = device.createRfcommSocketToServiceRecord(mmDevice.getUuids()[1].getUuid());
+                
+            } catch (Exception e) {
                 Log.e(TAG, "Socket Type: " + mSocketType + "create() failed", e);
+            }*/
+            
+            
+          //===============================================================================================/
+            //Method #3 -
+            //1. "Connection refused" Android 4.0.3 API 15
+            //2. works for Android 4.2.2 API 17
+            //3. works for Android 4.1.2 API 16 without pairing - although pairing is ignored, the next attempt to connect from the BPM brings up pairing confirmation popup ==> it remembers the phone
+            //3.1. but phone should already remembers/ be remembered after 1st pairing right? ==> BPM or phone's memory is mysteriously cleared some how
+            //3.2. when connection is successful, UUID is the default "00001101-0000-1000-8000-00805f9b34fb" anyway so why it fails in the 1st place?
+            //3.3. After one failed attempt ("Service discovery failed") I tried again and succeeded
+            try {
+            	UUID mUUID = MY_UUID;
+            	boolean temp = mmDevice.fetchUuidsWithSdp();
+            	if (temp) {//(device.getUuids()!=null) {
+            		//when phone is not paired to Omron device, device.getUuids() returns null
+            		//hardcoding UUID does not work for Android 4.2.2 API 17, some even says all Jelly Bean devices - http://stackoverflow.com/a/13689775/541624
+            		ParcelUuid[] phoneUuids = device.getUuids();
+            		if (phoneUuids.length>0) {
+            			for (int i=0; i<phoneUuids.length; i++) {
+            		
+	                		mUUID = phoneUuids[i].getUuid();
+	                		if (D) Log.w(TAG, "the stored (?) device UUID is "+mUUID);
+            			}
+            		}
+            		
+            		//tmp = device.createRfcommSocketToServiceRecord(mUUID);
+            		tmp = device.createInsecureRfcommSocketToServiceRecord(mUUID);
+            	}
+            	
+            } catch (IOException e) {
+            	Log.e(TAG, "Socket Type: " + "create() failed", e);
+            } catch (Exception e) {
+            	Log.e(TAG, "what freaking exception is happing?", e);
             }
+            
             mmSocket = tmp;
         }
 
