@@ -54,6 +54,7 @@ public class BluetoothTest extends Activity {
 	
 	//Views
     private Button myScanButton;
+    private Button btnDisconnect;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -80,13 +81,22 @@ public class BluetoothTest extends Activity {
                 startActivityForResult(serverIntent, REQUEST_CONNECT_DEVICE_SECURE);
             }
         });
+		
+		//Initialize disconnect button - to improve later: should only show when connected
+		btnDisconnect = (Button) findViewById(R.id.ButtonDisconnect);
+		btnDisconnect.setOnClickListener(new OnClickListener() {
+            public void onClick(View v) {
+            	//TODO: to handle disconnection
+            	disconnect();
+            }
+        });
         
 	}
 	
 	@Override
     public void onStart() {
         super.onStart();
-        if(D) Log.e(TAG, "++ ON START ++");
+        //if(D) Log.e(TAG, "++ ON START ++");
 
         // If BT is not on, request that it be enabled.
         // setupChat() will then be called during onActivityResult
@@ -102,7 +112,7 @@ public class BluetoothTest extends Activity {
     @Override
     public synchronized void onResume() {
         super.onResume();
-        if(D) Log.e(TAG, "+ ON RESUME +");
+        //if(D) Log.e(TAG, "+ ON RESUME +");
 
         // Performing this check in onResume() covers the case in which BT was
         // not enabled during onStart(), so we were paused to enable it...
@@ -113,6 +123,36 @@ public class BluetoothTest extends Activity {
               // Start the Bluetooth chat services
               mTestService.start();
             }
+        }
+    }
+    
+    @Override
+    public synchronized void onPause() {
+        super.onPause();
+        //if(D) Log.e(TAG, "- ON PAUSE -");
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        //if(D) Log.e(TAG, "-- ON STOP --");
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        // Stop the Bluetooth chat services
+        if (mTestService != null) mTestService.stop();
+        //if(D) Log.e(TAG, "--- ON DESTROY ---");
+    }
+
+    private void ensureDiscoverable() {
+        if(D) Log.d(TAG, "ensure discoverable");
+        if (mBluetoothAdapter.getScanMode() !=
+            BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
+            Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+            discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300);
+            startActivity(discoverableIntent);
         }
     }
     
@@ -234,5 +274,12 @@ public class BluetoothTest extends Activity {
         // Attempt to connect to the device
         mTestService.connect(device, secure);
     }
+	
+	public void disconnect() {
+		if (mTestService!=null) {
+			mTestService.stop();
+	        if(D) Log.e(TAG, "Stopping the service");
+		}
+	}
 
 }

@@ -3,6 +3,8 @@ package com.example.bluetoothtest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
+import java.util.Random;
 import java.util.UUID;
 
 import android.bluetooth.BluetoothAdapter;
@@ -10,11 +12,14 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.os.ParcelUuid;
 import android.util.Log;
+
+import omronspp.OmronBaseClass;
 
 public class BluetoothTestService {
 	// Debugging
@@ -94,11 +99,11 @@ public class BluetoothTestService {
         // Start the thread to listen on a BluetoothServerSocket
         if (mSecureAcceptThread == null) {
             mSecureAcceptThread = new AcceptThread(true);
-            mSecureAcceptThread.start();
+            //mSecureAcceptThread.start();
         }
         if (mInsecureAcceptThread == null) {
-            mInsecureAcceptThread = new AcceptThread(false);
-            mInsecureAcceptThread.start();
+            //mInsecureAcceptThread = new AcceptThread(false);
+            //mInsecureAcceptThread.start();
         }
     }
     
@@ -120,7 +125,7 @@ public class BluetoothTestService {
 
         // Start the thread to connect with the given device
         mConnectThread = new ConnectThread(device, secure);
-        mConnectThread.start();
+        if (mConnectThread.running) mConnectThread.start();//only run the thread if initialization is successful - a Bluetooth socket can be created
         setState(STATE_CONNECTING);
     }
     
@@ -130,8 +135,8 @@ public class BluetoothTestService {
      * @param device  The BluetoothDevice that has been connected
      */
     public synchronized void connected(BluetoothSocket socket, BluetoothDevice
-            device, final String socketType) {
-        if (D) Log.d(TAG, "connected, Socket Type:" + socketType);
+            device) {
+        if (D) Log.d(TAG, "connected");
 
         // Cancel the thread that completed the connection
         if (mConnectThread != null) {mConnectThread.cancel(); mConnectThread = null;}
@@ -141,16 +146,16 @@ public class BluetoothTestService {
 
         // Cancel the accept thread because we only want to connect to one device
         if (mSecureAcceptThread != null) {
-            mSecureAcceptThread.cancel();
-            mSecureAcceptThread = null;
+            //mSecureAcceptThread.cancel();
+            //mSecureAcceptThread = null;
         }
         if (mInsecureAcceptThread != null) {
-            mInsecureAcceptThread.cancel();
-            mInsecureAcceptThread = null;
+            //mInsecureAcceptThread.cancel();
+            //mInsecureAcceptThread = null;
         }
 
         // Start the thread to manage the connection and perform transmissions
-        mConnectedThread = new ConnectedThread(socket, socketType);
+        mConnectedThread = new ConnectedThread(socket);
         mConnectedThread.start();
 
         // Send the name of the connected device back to the UI Activity
@@ -180,13 +185,13 @@ public class BluetoothTestService {
         }
 
         if (mSecureAcceptThread != null) {
-            mSecureAcceptThread.cancel();
-            mSecureAcceptThread = null;
+            //mSecureAcceptThread.cancel();
+            //mSecureAcceptThread = null;
         }
 
         if (mInsecureAcceptThread != null) {
-            mInsecureAcceptThread.cancel();
-            mInsecureAcceptThread = null;
+            //mInsecureAcceptThread.cancel();
+            //mInsecureAcceptThread = null;
         }
         setState(STATE_NONE);
     }
@@ -307,8 +312,7 @@ public class BluetoothTestService {
                         case STATE_LISTEN:
                         case STATE_CONNECTING:
                             // Situation normal. Start the connected thread.
-                            connected(socket, socket.getRemoteDevice(),
-                                    mSocketType);
+                            connected(socket, socket.getRemoteDevice());
                             break;
                         case STATE_NONE:
                         case STATE_CONNECTED:
@@ -344,112 +348,147 @@ public class BluetoothTestService {
      * succeeds or fails.
      */
     private class ConnectThread extends Thread {
-        private final BluetoothSocket mmSocket;
+        private BluetoothSocket mmSocket = null;
         private final BluetoothDevice mmDevice;
-        private String mSocketType;
+        //private String mSocketType;
+        private volatile boolean running = false;
 
         public ConnectThread(BluetoothDevice device, boolean secure) {
-            mmDevice = device;
+            
+        	mmDevice = device;
             BluetoothSocket tmp = null;
-            mSocketType = secure ? "Secure" : "Insecure";
 
-            // Get a BluetoothSocket for a connection with the
-            // given BluetoothDevice
-            /*try {
-            	boolean temp = mmDevice.fetchUuidsWithSdp();
-            	UUID uuid = null;
-            	if( temp ){
-            		//3 or 4 different UUIDs are usually returned by getUuids()
-            		for (int i=0; i<mmDevice.getUuids().length; i++) {
-            			uuid = mmDevice.getUuids()[i].getUuid();
-            			Log.w(TAG, "uuid is "+uuid);
-            		}
-            	}
-            	//Method #2 - Used in BluetoothChat example but "Service discovery failed" all the freaking times
-            	tmp = device.createRfcommSocketToServiceRecord(mmDevice.getUuids()[1].getUuid());
-                
-            } catch (Exception e) {
-                Log.e(TAG, "Socket Type: " + mSocketType + "create() failed", e);
-            }*/
-            
-            
-          //===============================================================================================/
-            //Method #3 -
-            //1. "Connection refused" Android 4.0.3 API 15
-            //2. works for Android 4.2.2 API 17
-            //3. works for Android 4.1.2 API 16 without pairing - although pairing is ignored, the next attempt to connect from the BPM brings up pairing confirmation popup ==> it remembers the phone
-            //3.1. but phone should already remembers/ be remembered after 1st pairing right? ==> BPM or phone's memory is mysteriously cleared some how
-            //3.2. when connection is successful, UUID is the default "00001101-0000-1000-8000-00805f9b34fb" anyway so why it fails in the 1st place?
-            //3.3. After one failed attempt ("Service discovery failed") I tried again and succeeded
+            //===============================================================================================/
+            //Method #2 - Used in BluetoothChat example but "Service discovery failed" all the freaking times
             try {
-            	UUID mUUID = MY_UUID;
-            	boolean temp = mmDevice.fetchUuidsWithSdp();
-            	if (temp) {//(device.getUuids()!=null) {
-            		//when phone is not paired to Omron device, device.getUuids() returns null
-            		//hardcoding UUID does not work for Android 4.2.2 API 17, some even says all Jelly Bean devices - http://stackoverflow.com/a/13689775/541624
-            		ParcelUuid[] phoneUuids = device.getUuids();
-            		if (phoneUuids.length>0) {
-            			for (int i=0; i<phoneUuids.length; i++) {
-            		
-	                		mUUID = phoneUuids[i].getUuid();
-	                		if (D) Log.w(TAG, "the stored (?) device UUID is "+mUUID);
-            			}
-            		}
-            		
-            		//tmp = device.createRfcommSocketToServiceRecord(mUUID);
-            		tmp = device.createInsecureRfcommSocketToServiceRecord(mUUID);
-            	}
-            	
+             	//hardcoding UUID does not work for Android 4.2.2 API 17, some even says all Jelly Bean devices - http://stackoverflow.com/a/13689775/541624
+                
+                tmp = device.createInsecureRfcommSocketToServiceRecord(MY_UUID);
+                //if (tmp==null) tmp = device.createRfcommSocketToServiceRecord(MY_UUID);;
+                
             } catch (IOException e) {
-            	Log.e(TAG, "Socket Type: " + "create() failed", e);
-            } catch (Exception e) {
-            	Log.e(TAG, "what freaking exception is happing?", e);
+            	if (D) Log.e(TAG, "could not create the socket", e);
             }
             
-            mmSocket = tmp;
+            /*if (tmp==null) {
+            	//Method #3 -
+                //1. "Connection refused" Android 4.0.3 API 15
+                //2. works for Android 4.2.2 API 17
+                //3. works for Android 4.1.2 API 16 without pairing - although pairing is ignored, the next attempt to connect from the BPM brings up pairing confirmation popup ==> it remembers the phone
+                //3.1. but phone should already remembers/ be remembered after 1st pairing right? ==> BPM or phone's memory is mysteriously cleared some how
+                //3.2. when connection is successful, UUID is the default "00001101-0000-1000-8000-00805f9b34fb" anyway so why it fails in the 1st place?
+                //3.3. After one failed attempt ("Service discovery failed") I tried again and succeeded
+                try {
+                	UUID mUUID = MY_UUID; 
+                	if (device.getUuids()!=null) {
+                		//when phone is not paired to Omron device, device.getUuids() returns null
+                		//hardcoding UUID does not work for Android 4.2.2 API 17, some even says all Jelly Bean devices - http://stackoverflow.com/a/13689775/541624
+                		ParcelUuid[] phoneUuids = device.getUuids();
+                		if (phoneUuids.length>0) {
+                			for (int i=0; i<phoneUuids.length; i++) {
+                		
+    	                		mUUID = phoneUuids[i].getUuid();
+    	                		if (D) Log.i(TAG, "the stored (?) device UUID is "+mUUID);
+                			}
+                		}
+                	}
+                	
+                    if (secure) {
+                    	tmp = device.createRfcommSocketToServiceRecord(mUUID);
+                    }
+                    else {
+                    	tmp = device.createInsecureRfcommSocketToServiceRecord(mUUID);
+                    }
+                } catch (IOException e) {
+                	Log.e(TAG, "Socket Type: " + "create() failed", e);
+                } catch (Exception e) {
+                	Log.e(TAG, "what freaking exception is happening?", e);
+                }
+            }*/
+            
+            /*if (tmp==null) {
+            	//Method #1 - "permission denied" for 4.0.3 API 15
+                //works for 4.2.2 API 17
+                //does not work for 4.1.2 API 16 "permission denied"
+                try {
+                	Method m = device.getClass().getMethod("createRfcommSocket", new Class[] {int.class});
+                    tmp = (BluetoothSocket) m.invoke(device, 1);
+                } catch (Exception e) {
+                	if (D) Log.e(TAG, "could not create the socket", e);
+                }
+            }*/
+            
+            if (tmp!=null) {
+            	if (D) Log.i(TAG, "Awesome, a Bluetooth socket successfully initialised"); 
+            	mmSocket = tmp;
+            	running = true;
+            } else {
+            	//finish();
+            }
+            
         }
 
         public void run() {
-            Log.i(TAG, "BEGIN mConnectThread SocketType:" + mSocketType);
-            setName("ConnectThread" + mSocketType);
+        	//while (running) {
+        		Log.i(TAG, "BEGIN mConnectThread");
+                //setName("ConnectThread" + mSocketType);
 
-            // Always cancel discovery because it will slow down a connection
-            mAdapter.cancelDiscovery();
+                // Always cancel discovery because it will slow down a connection
+                mAdapter.cancelDiscovery();
 
-            // Make a connection to the BluetoothSocket
-            try {
-                // This is a blocking call and will only return on a
-                // successful connection or an exception
-                mmSocket.connect();
-            } catch (IOException e) {
-            	Log.e(TAG, "failed to connect to the external device", e);
-                // Close the socket
+                // Make a connection to the BluetoothSocket
                 try {
-                    mmSocket.close();
-                } catch (IOException e2) {
-                    Log.e(TAG, "unable to close() " + mSocketType +
-                            " socket during connection failure", e2);
+                    // This is a blocking call and will only return on a
+                    // successful connection or an exception
+                    mmSocket.connect();
+                } catch (IOException e) {
+                	Log.e(TAG, "failed to connect to the device", e);
+                    // Close the socket
+                    try {
+                        mmSocket.close();
+                    } catch (IOException e2) {
+                        Log.e(TAG, "unable to close() " +
+                                " socket during connection failure", e2);
+                    }
+                    connectionFailed();
+                    return;
                 }
-                connectionFailed();
-                return;
-            }
 
-            // Reset the ConnectThread because we're done
-            synchronized (BluetoothTestService.this) {
+                // Reset the ConnectThread because we're done???
+                //synchronized (BluetoothTestService.this) {
+                //    mConnectThread = null;
+                //}
+
+                // Start the connected thread
+                connected(mmSocket, mmDevice);
+                
+                // Reset the ConnectThread because we're done???
+                //synchronized (BluetoothTestService.this) {
+                //    mConnectThread = null;
+                //}
+                running = false;
+                this.interrupt();
                 mConnectThread = null;
-            }
-
-            // Start the connected thread
-            connected(mmSocket, mmDevice, mSocketType);
+        	//}
         }
-
+        
+        //why would I need to close the socket here?
         public void cancel() {
-            try {
-                mmSocket.close();
-            } catch (IOException e) {
-                Log.e(TAG, "close() of connect " + mSocketType + " socket failed", e);
-            }
+            /*if (mmSocket!=null) {
+            	try {
+                    
+                    mmSocket.close();
+                } catch (IOException e) {
+                    Log.e(TAG, "close() of connect " + " socket failed", e);
+                }
+            }*/
+        	//Stopping the thread would be enough, shouldn't close the socket, it is not for this thread to decide
+        	running = false;
+        	this.interrupt();
+        	//return;
+            
         }
+        
     }
     
     /**
@@ -461,8 +500,8 @@ public class BluetoothTestService {
         private final InputStream mmInStream;
         private final OutputStream mmOutStream;
 
-        public ConnectedThread(BluetoothSocket socket, String socketType) {
-            Log.d(TAG, "create ConnectedThread: " + socketType);
+        public ConnectedThread(BluetoothSocket socket) {
+            Log.d(TAG, "create ConnectedThread: ");
             mmSocket = socket;
             InputStream tmpIn = null;
             OutputStream tmpOut = null;
@@ -480,27 +519,79 @@ public class BluetoothTestService {
         }
 
         public void run() {
-            Log.i(TAG, "BEGIN mConnectedThread");
+        	if (mConnectThread!=null) {
+        		mConnectThread.interrupt();
+        		//mConnectThread.cancel();
+        		mConnectThread = null;//is this the proper way to destroy/ cancel the connectthread? No
+        		
+        	}
+        	Log.i(TAG, "BEGIN mConnectedThread");
             byte[] buffer = new byte[1024];
-            int bytes;
+            int len;
+            boolean flag = false;
+            String response = "";
 
             // Keep listening to the InputStream while connected
-            while (true) {
+            //while (true) {
                 try {
                     // Read from the InputStream
-                    bytes = mmInStream.read(buffer);
+                	//if (mmInStream.available()>0) {
+                		len = mmInStream.read(buffer);
+                		
+                		// Send the obtained bytes to the UI Activity
+                        //mHandler.obtainMessage(BluetoothTest.MESSAGE_READ, bytes, -1, buffer).sendToTarget();
+                		flag = OmronBaseClass.checkReady(buffer, len);
+                	//}
+                	
+                	
 
-                    // Send the obtained bytes to the UI Activity
-                    mHandler.obtainMessage(BluetoothTest.MESSAGE_READ, bytes, -1, buffer)
-                            .sendToTarget();
+                    
                 } catch (IOException e) {
                     Log.e(TAG, "disconnected", e);
                     connectionLost();
                     // Start the service over to restart listening mode
                     BluetoothTestService.this.start();
-                    break;
+                    //break;
                 }
+                
+            if (flag) {  
+	            //}
+	            try {
+		            //Send TOK command
+		            
+		        	if (D) Log.w(TAG, "Sending the TOK command"); 
+		    		sendCmd(OmronBaseClass.cmdTOK());
+		    		//if (mmInStream.available()>0) {
+		    		Thread.sleep(500);
+		        		len = mmInStream.read(buffer);
+		        		response = OmronBaseClass.handleCmdTOK(buffer, len);
+		        		Log.w(TAG, response);
+		        		if (response.equals("NO")) {
+		        			if (D) Log.w(TAG, "Try ending the TOK command once again");
+		        			Thread.sleep(3500);
+		        			sendCmd(OmronBaseClass.cmdTOK());
+				    		//if (mmInStream.available()>0) {
+				    		Thread.sleep(500);
+				    		len = mmInStream.read(buffer);
+			        		response = OmronBaseClass.handleCmdTOK(buffer, len);
+			        		Log.w(TAG, response);
+		        		}
+		    		//}
+	            } catch (IOException e) {
+	            	if (D) Log.e(TAG, "y quit so early?", e); 
+	            } catch (InterruptedException e) {
+	            	if (D) Log.e(TAG, "connected thread was interrupted", e); 
+	            }
             }
+            
+            //Stop the thread after 10 seconds just for testing
+            /*try {
+    			this.join(5000);
+    		} catch (InterruptedException e) {
+    			// TODO Auto-generated catch block
+    			if (D) Log.e(TAG, "could not join thread ", e); 
+    		}
+            this.cancel();*/
         }
         
         /**
@@ -520,11 +611,47 @@ public class BluetoothTestService {
         }
 
         public void cancel() {
+        	byte[] buffer = new byte[1024];
+        	int len = 0;
             try {
-                mmSocket.close();
+            	//Send TOK command
+            	if (D) Log.w(TAG, "Sending the TOK comand"); 
+        		sendCmd(OmronBaseClass.cmdTOK());
+        		len = mmInStream.read(buffer);
+        		String response = OmronBaseClass.handleCmdTOK(buffer, len);
+        		Log.w(TAG, response);
+        		
+        		if (D) Log.w(TAG, "closing the bluetooth socket"); 
+                //mmSocket.close();
             } catch (IOException e) {
                 Log.e(TAG, "close() of connect socket failed", e);
             }
+            
+            //Shouldn't I kill this thread as well?
+            //BluetoothTestService.this.start();
+            //this.interrupt();
+        }
+        
+        private void sendCmd(String cmd){
+        	
+        	try {
+        		byte[] byteCmd = cmd.getBytes();
+        		//write(byteCmd);
+        		mmOutStream.write(byteCmd);
+        		//Thread.sleep(500);
+        	} catch (IOException e){
+        		e.printStackTrace();
+        	} catch (Exception e) {
+        		if (D) Log.e(TAG, "could notsend the command, something went wrong", e);
+        	}
+    		/*try {
+				sleep(500);
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (Exception e) {
+				Log.d(TAG, "Some odd exception happens while sending commands to the BPM", e);
+			}*/
         }
     }
 

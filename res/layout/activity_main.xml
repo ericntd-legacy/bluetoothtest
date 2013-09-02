@@ -9,7 +9,8 @@
     tools:context=".BluetoothTest" >
 
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:id="@+id/ConnectionStatusLayout"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content" >
 
         <TextView
@@ -26,15 +27,30 @@
     </LinearLayout>
 
     <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content" >
+        android:id="@+id/Scan4Device"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/ConnectionStatusLayout" >
 
         <Button
             android:id="@+id/MyScanButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:text="@string/button_scan" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/Disconnect"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/Scan4Device" >
+
+        <Button
+            android:id="@+id/ButtonDisconnect"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Disconnect" />
 
     </LinearLayout>
 
